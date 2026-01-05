@@ -123,3 +123,52 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// Trong kernel/sysproc.c
+
+uint64
+sys_pgaccess(void)
+{
+  uint64 base;      // Địa chỉ ảo bắt đầu (user truyền vào)
+  int len;          // Số lượng trang cần kiểm tra
+  uint64 bitmask;   // Địa chỉ buffer của user để chứa kết quả
+  struct proc *p = myproc(); // Lấy tiến trình hiện tại
+
+  // 1. Lấy các tham số từ thanh ghi (argument parsing) [cite: 82]
+  if(argaddr(0, &base) < 0 || argint(1, &len) < 0 || argaddr(2, &bitmask) < 0)
+    return -1;
+
+  // Giới hạn số trang để tránh loop quá lâu (ví dụ 64 trang - tương ứng 64 bit) [cite: 85]
+  if(len > 64) 
+    return -1;
+
+  uint64 mask_result = 0; // Biến tạm để lưu kết quả bitmask
+
+  // 2. Duyệt qua từng trang
+  for(int i = 0; i < len; i++) {
+    // Tính địa chỉ ảo của trang thứ i
+    uint64 va = base + i * PGSIZE; 
+
+    // 3. Tìm PTE tương ứng với địa chỉ ảo này 
+    // walk trả về con trỏ tới PTE. Tham số cuối là 0 vì ta chỉ tìm, không cấp phát mới.
+    pte_t *pte = walk(p->pagetable, va, 0);
+
+    // 4. Kiểm tra PTE
+    // Kiểm tra xem PTE có tồn tại không và bit PTE_A có bật không
+    if(pte != 0 && (*pte & PTE_V) && (*pte & PTE_A)) {
+      
+      // Nếu đã access: Bật bit thứ i trong biến kết quả
+      mask_result = mask_result | (1L << i);
+
+      // QUAN TRỌNG: Xóa bit A để reset cho lần kiểm tra sau 
+      // Dùng phép AND với phủ định của PTE_A (dạng ...11011...)
+      *pte = *pte & ~PTE_A; 
+    }
+  }
+
+  // 5. Copy kết quả từ kernel (mask_result) ra user space (bitmask) 
+  if(copyout(p->pagetable, bitmask, (char *)&mask_result, sizeof(mask_result)) < 0)
+    return -1;
+
+  return 0;
+}
