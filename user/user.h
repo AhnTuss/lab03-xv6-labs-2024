@@ -37,6 +37,7 @@ int ugetpid(void);
 uint64 pgpte(void*);
 void kpgtbl(void);
 #endif
+int pgaccess(void *base, int len, void *mask);
 
 // ulib.c
 int stat(const char*, struct stat*);
