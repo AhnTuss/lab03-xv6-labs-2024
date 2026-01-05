@@ -486,19 +486,45 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   }
 }
 
-
-#ifdef LAB_PGTBL
+// Hàm phụ để đệ quy duyệt page table
+//Nhận thêm tham số level để in dấu .. và duyệt sâu xuống các tầng dưới
+// level 1: in "..", level 2: in ".. ..", level 3: in ".. .. .."
 void
-vmprint(pagetable_t pagetable) {
-  // your code here
+vmprint_walk(pagetable_t pagetable, int level)
+{
+  // Duyệt qua tất cả 512 entry trong page table hiện tại
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+
+    // Chỉ xử lý nếu PTE là Valid (bit PTE_V được bật)
+    if(pte & PTE_V){
+      // In dấu thụt đầu dòng dựa trên level
+      for(int j = 0; j < level; j++){
+        printf(" ..");
+      }
+
+      // In thông tin: index, pte (hex), pa (hex)
+      // Sử dụng %p để in full 64-bit hex
+      // PTE2PA(pte) là macro lấy địa chỉ vật lý từ PTE
+      uint64 child = PTE2PA(pte);
+      printf("%d: pte %p pa %p\n", i, (void *)pte, (void *)child);
+
+      // Kiểm tra xem có cần đệ quy xuống tầng dưới không
+      // Nếu PTE này không có cờ R, W, hoặc X -> Nó là pointer trỏ tới page table con (Directory)
+      // Nếu có R/W/X -> Nó là lá (Leaf page chứa dữ liệu thật), không đi tiếp.
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        // Gọi đệ quy, ép kiểu địa chỉ vật lý thành pagetable_t
+        // Tăng level lên 1 để in thụt lề sâu hơn
+        vmprint_walk((pagetable_t)child, level + 1);
+      }
+    }
+  }
 }
-#endif
 
-
-
-#ifdef LAB_PGTBL
-pte_t*
-pgpte(pagetable_t pagetable, uint64 va) {
-  return walk(pagetable, va, 0);
+// Hàm chính in dòng tiêu đề và gọi hàm đệ quy bắt đầu từ level 1
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  vmprint_walk(pagetable, 1);
 }
-#endif
